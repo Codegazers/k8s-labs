@@ -1,0 +1,43 @@
+environment:
+  domain: "lab.local"
+  base_box: "frjaraur/xenial64"
+  #base_box: "frjaraur/bionic64"
+  base_flavour: "debian" 
+  # base_flavour: "redhat"
+  # base_box: "frjaraur/centos7"
+  base_box_version: "1.4"
+  #base_box_version: "1.0"
+  docker_engine_version: "5:18.09.4~3-0~ubuntu-xenial"
+  kubernetes_version: "1.14.0-00"
+  calico_url: "https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubeadm/1.7/calico.yaml"
+  kubernetes_token: "auxpg8.c64z4cmf9iutpef6"
+
+
+boxes:
+- name: "k8s1"
+  role: "manager"
+  mgmt_ip: "10.10.10.10"
+  data_ip: "11.11.11.10"
+  mem: "3056"
+  cpu: "1"
+
+- name: "k8s2"
+  role: "manager"
+  mgmt_ip: "10.10.10.11"
+  data_ip: "11.11.11.11"
+  mem: "3056"
+  cpu: "1"
+
+- name: "k8s3"
+  role: "worker"
+  mgmt_ip: "10.10.10.12"
+  data_ip: "11.11.11.12"
+  mem: "1024"
+  cpu: "1"
+  
+- name: "k8s4"
+  role: "worker"
+  mgmt_ip: "10.10.10.13"
+  data_ip: "11.11.11.13"
+  mem: "1024"
+  cpu: "1"
