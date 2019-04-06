@@ -28,7 +28,7 @@ boxes_hosts=""
 docker_engine_version=config['environment']['docker_engine_version']
 kubernetes_version=config['environment']['kubernetes_version']
 kubernetes_token=config['environment']['kubernetes_token']
-
+etcd_nodes=config['environment']['etcd_nodes']
 
 update_hosts = <<SCRIPT
     echo "127.0.0.1 localhost" >/etc/hosts
@@ -114,6 +114,9 @@ SCRIPT
 deb_install_etcd = <<SCRIPT
   DEBIAN_FRONTEND=noninteractive apt-get install -qq \
   etcd
+  curl -s -o /usr/bin/cfssl https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 
+  curl -s -o /usr/bin/cfssljson https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+  chmod +x /usr/bin/cfssl*
 SCRIPT
 
 deb_disable_autoupdates = <<SCRIPT
@@ -121,6 +124,52 @@ deb_disable_autoupdates = <<SCRIPT
     systemctl disable apt-daily.service
     systemctl disable apt-daily.timer
 SCRIPT
+
+deb_configure_etcd = <<SCRIPT
+  mkdir -p /etc/kubernetes/pki/etcd  
+  cp /vagrant/etcd/* /etc/kubernetes/pki/etcd
+  cd /etc/kubernetes/pki/etcd
+  cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client.json | cfssljson -bare client
+  cfssl print-defaults csr > config.json
+  sed -i 's/www\.example\.net/'"$2"'/' config.json
+  sed -i 's/example\.net/'"$1"'/' config.json
+  sed -i '0,/CN/{s/example\.net/'"$1"'/}' config.json
+  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server config.json | cfssljson -bare server
+  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=peer config.json | cfssljson -bare peer
+  echo "PEER_NAME=$1" >> /etc/etcd.env
+  echo "PRIVATE_IP=$2" >> /etc/etcd.env
+  mv /etc/kubernetes/pki/etcd/etcd.service /etc/systemd/system/etcd.service
+  sed -i 's/__NODE_NAME__\/'"$1"'/' /etc/systemd/system/etcd.service 
+  sed -i 's/__NODE_IP__\/'"$2"'/' /etc/systemd/system/etcd.service
+  
+  CLUSTER_STATE="new"
+  i=1
+  while [ $i -le $3 ]
+  do
+    [ ! -f /vagrant/tmp/master$i ] && printf "${1}=http:\\/\\/${2}:2380" >> /vagrant/tmp/master$i && break
+    CLUSTER_STATE="existing"
+    i=$((i + 1 ))
+  done
+
+  for file in /vagrant/tmp/master*
+  do
+    MASTERS="${MASTERS},$(cat $file)"
+  done
+  
+  MASTERS="$(echo $MASTERS|sed -e "s/^,//")"
+  
+  sed -i 's/__MASTERS__/'"${MASTERS}"'/' /etc/systemd/system/etcd.service
+
+  sed -i 's/__CLUSTER_STATE__/'"${CLUSTER_STATE}"'/' /etc/systemd/system/etcd.service
+
+  systemctl daemon-reload
+  systemctl enable etcd
+  systemctl start etcd
+  etcdctl cluster-health
+
+SCRIPT
+
 
 Vagrant.configure(2) do |config|
   VAGRANT_COMMAND = ARGV[0]
@@ -191,13 +240,17 @@ Vagrant.configure(2) do |config|
         config.vm.provision :shell, :inline => deb_ansible_enablement           
       end
 
-      if base_flavour.downcase == "redhat"
-        config.vm.provision :shell, :inline => rh_install_kubernetes
-      else
-        config.vm.provision :shell, :inline => deb_install_docker_engine, :args => docker_engine_version
-        config.vm.provision :shell, :inline => deb_install_kubernetes, :args => kubernetes_version      
-        config.vm.provision :shell, :inline => deb_install_etcd       
-      end       
+      if node['role'] == "manager"
+        if base_flavour.downcase == "redhat"
+          config.vm.provision :shell, :inline => rh_install_kubernetes
+        else
+          config.vm.provision :shell, :inline => deb_install_docker_engine, :args => docker_engine_version
+          config.vm.provision :shell, :inline => deb_install_kubernetes, :args => kubernetes_version      
+          config.vm.provision :shell, :inline => deb_install_etcd       
+        end
+        config.vm.provision :shell, :inline => deb_configure_etcd, :args => [node['name'], node['mgmt_ip'],etcd_nodes]
+
+      end         
     end
 
   end
