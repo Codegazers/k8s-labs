@@ -128,15 +128,21 @@ SCRIPT
 deb_configure_etcd = <<SCRIPT
   mkdir -p /etc/kubernetes/pki/etcd  
   cp /vagrant/etcd/* /etc/kubernetes/pki/etcd
-  cd /etc/kubernetes/pki/etcd
-  cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
-  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client.json | cfssljson -bare client
+  mkdir -p /vagrant/tmp/etcd
+  cp /vagrant/etcd/* /vagrant/tmp/etcd
+  cd /vagrant/tmp/etcd
+  [ ! -f ca.pem -o ! -f ca-key.pem -o ! -f ca.csr ] && cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+  [ ! -f client.pem -o ! -f client-key.pem -o ! -f client.csr ] && cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client.json | cfssljson -bare client
   cfssl print-defaults csr > config.json
   sed -i 's/www\.example\.net/'"$2"'/' config.json
   sed -i 's/example\.net/'"$1"'/' config.json
   sed -i '0,/CN/{s/example\.net/'"$1"'/}' config.json
   cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server config.json | cfssljson -bare server
   cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=peer config.json | cfssljson -bare peer
+
+  cp /vagrant/tmp/etcd/* /etc/kubernetes/pki/etcd
+
+
   echo "PEER_NAME=$1" >> /etc/etcd.env
   echo "PRIVATE_IP=$2" >> /etc/etcd.env
   mv /etc/kubernetes/pki/etcd/etcd.service /etc/systemd/system/etcd.service
