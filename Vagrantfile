@@ -29,6 +29,19 @@ docker_engine_version=config['environment']['docker_engine_version']
 kubernetes_version=config['environment']['kubernetes_version']
 kubernetes_token=config['environment']['kubernetes_token']
 etcd_nodes=config['environment']['etcd_nodes']
+etcd_nodes_count=etcd_nodes.length
+
+
+def array_values_to_array_of_hashes(l)
+	result = l
+	if l.is_a?(Array) and l.length > 0
+		if not l[0].is_a?(Hash)	# check the first value
+			result = l.each_with_object([]) { |x, a| a.push({:name => x}) }
+		end
+	end
+	return result
+end
+
 
 update_hosts = <<SCRIPT
     echo "127.0.0.1 localhost" >/etc/hosts
@@ -131,7 +144,7 @@ deb_configure_etcd = <<SCRIPT
   mkdir -p /vagrant/tmp/etcd
   cp /vagrant/etcd/* /vagrant/tmp/etcd
   cd /vagrant/tmp/etcd
-  [ ! -f ca.pem -o ! -f ca-key.pem -o ! -f ca.csr ] && cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+  [ ! -f ca.pem -o ! -f ca-key.pem -o ! -f ca.csr ] && export FIRSTNODE=$1 && cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
   [ ! -f client.pem -o ! -f client-key.pem -o ! -f client.csr ] && cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client.json | cfssljson -bare client
   cfssl print-defaults csr > config.json
   sed -i 's/www\.example\.net/'"$2"'/' config.json
@@ -171,12 +184,23 @@ deb_configure_etcd = <<SCRIPT
 
   systemctl daemon-reload
   systemctl enable etcd
+  systemctl stop etcd
+  rm -rf /var/lib/etcd/*
   systemctl start etcd
   etcdctl cluster-health
+  echo ${FIRSTNODE}
 
 SCRIPT
 
 
+deb_install_nginx = <<SCRIPT
+  DEBIAN_FRONTEND=noninteractive apt-get install -qq \
+  nginx
+SCRIPT
+
+deb_configure_nginx = <<SCRIPT
+  echo "Do nothing ..."
+SCRIPT
 Vagrant.configure(2) do |config|
   VAGRANT_COMMAND = ARGV[0]
 #   if VAGRANT_COMMAND == "ssh"
@@ -254,9 +278,19 @@ Vagrant.configure(2) do |config|
           config.vm.provision :shell, :inline => deb_install_kubernetes, :args => kubernetes_version      
           config.vm.provision :shell, :inline => deb_install_etcd       
         end
-        config.vm.provision :shell, :inline => deb_configure_etcd, :args => [node['name'], node['mgmt_ip'],etcd_nodes]
+        config.vm.provision :shell, :inline => deb_configure_etcd, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
 
-      end         
+      end
+      
+      if node['role'] == "loadbalancer"
+        if base_flavour.downcase == "redhat"
+          config.vm.provision :shell, :inline => rh_install_nginx
+        else
+          config.vm.provision :shell, :inline => deb_install_nginx 
+        end
+        config.vm.provision :shell, :inline => deb_configure_nginx, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
+
+      end           
     end
 
   end
