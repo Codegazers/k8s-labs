@@ -278,7 +278,7 @@ Vagrant.configure(2) do |config|
           config.vm.provision :shell, :inline => deb_install_kubernetes, :args => kubernetes_version      
           config.vm.provision :shell, :inline => deb_install_etcd       
         end
-        config.vm.provision :shell, :inline => deb_configure_etcd, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
+        #config.vm.provision :shell, :inline => deb_configure_etcd, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
 
       end
       
@@ -288,7 +288,7 @@ Vagrant.configure(2) do |config|
         else
           config.vm.provision :shell, :inline => deb_install_nginx 
         end
-        config.vm.provision :shell, :inline => deb_configure_nginx, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
+        #config.vm.provision :shell, :inline => deb_configure_nginx, :args => [node['name'], node['mgmt_ip'],etcd_nodes_count]
 
       end           
     end
